@@ -499,13 +499,25 @@ class AdminDashboard {
     previousPage() {
         if (this.currentPage > 1) {
             this.currentPage--;
-            this.loadUsers();
+            this.loadUsers(
+                this.currentPage,
+                this.filters.search,
+                this.filters.tier,
+                this.filters.plan,
+                this.filters.sortBy
+            );
         }
     }
 
     nextPage() {
         this.currentPage++;
-        this.loadUsers();
+        this.loadUsers(
+            this.currentPage,
+            this.filters.search,
+            this.filters.tier,
+            this.filters.plan,
+            this.filters.sortBy
+        );
     }
 
     updateLastUpdated() {
