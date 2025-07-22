@@ -66,6 +66,8 @@ header {
     height: 80px;
     object-fit: contain;
     margin-right: 16px;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 h1 {
