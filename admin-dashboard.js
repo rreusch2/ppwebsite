@@ -42,9 +42,11 @@ class AdminDashboard {
     }
 
     initBackend() {
-        // Use Railway backend API instead of direct Supabase
-        this.backendUrl = 'https://zooming-rebirth-production-a305.up.railway.app';
-        this.authToken = 'Bearer admin-pplay12345';
+        // Use Supabase Admin directly - fuck the backend complications
+        const SUPABASE_URL = 'https://iriaegoipkjtktitpary.supabase.co';
+        const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlyaWFlZ29pcGtqdGt0aXRwYXJ5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0ODkxMTQzMiwiZXhwIjoyMDY0NDg3NDMyfQ.7gTP9UGDkNfIL2jatdP5xSLADJ29KZ1cRb2RGh20kE0';
+        
+        this.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     }
 
     setupEventListeners() {
@@ -101,7 +103,7 @@ class AdminDashboard {
             // Load data with individual error handling
             const results = await Promise.allSettled([
                 this.loadSummaryStats(),
-                this.loadUsers(),
+                this.loadUsers(this.currentPage, this.filters.search, this.filters.tier, this.filters.plan, this.filters.sortBy),
                 this.loadCharts()
             ]);
 
@@ -127,77 +129,103 @@ class AdminDashboard {
 
     async loadSummaryStats() {
         try {
-            const response = await fetch(`${this.backendUrl}/api/admin/stats`, {
-                headers: {
-                    'Authorization': this.authToken,
-                    'Content-Type': 'application/json'
-                }
-            });
+            // Get all users directly from Supabase
+            const { data: users, error } = await this.supabase
+                .from('profiles')
+                .select('subscription_tier, subscription_plan_type, subscription_status, created_at');
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
+            if (error) throw error;
 
-            const stats = await response.json();
+            // Calculate stats
+            const totalUsers = users.length;
+            const proUsers = users.filter(u => u.subscription_tier === 'pro').length;
+            const freeUsers = users.filter(u => u.subscription_tier === 'free').length;
+            
+            // Active subscription counts
+            const activeUsers = users.filter(u => u.subscription_status === 'active');
+            const weeklySubs = activeUsers.filter(u => u.subscription_plan_type === 'weekly').length;
+            const monthlySubs = activeUsers.filter(u => u.subscription_plan_type === 'monthly').length;
+            const yearlySubs = activeUsers.filter(u => u.subscription_plan_type === 'yearly').length;
+            const lifetimeSubs = activeUsers.filter(u => u.subscription_plan_type === 'lifetime').length;
+
+            // Calculate revenue
+            const monthlyRevenue = (weeklySubs * 12.49 * 4.33) + (monthlySubs * 24.99) + (yearlySubs * 199.99 / 12) + (lifetimeSubs * 349.99 / 60);
+
+            // New users in last 7 days
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const newUsers7d = users.filter(u => new Date(u.created_at) >= sevenDaysAgo).length;
 
             // Update UI
-            document.getElementById('totalUsers').textContent = stats.totalUsers.toLocaleString();
-            document.getElementById('proUsers').textContent = stats.proUsers.toLocaleString();
-            document.getElementById('weeklySubs').textContent = stats.weeklySubs.toLocaleString();
-            document.getElementById('monthlySubs').textContent = stats.monthlySubs.toLocaleString();
-            document.getElementById('yearlySubs').textContent = stats.yearlySubs.toLocaleString();
-            document.getElementById('lifetimeSubs').textContent = stats.lifetimeSubs.toLocaleString();
-            document.getElementById('monthlyRevenue').textContent = `$${stats.monthlyRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            document.getElementById('newUsers7d').textContent = stats.newUsers7d.toLocaleString();
-
-            // Show growth change if available
-            const growthElement = document.getElementById('newUsersChange');
-            if (stats.userGrowthChange !== undefined) {
-                const changeClass = stats.userGrowthChange >= 0 ? 'positive' : 'negative';
-                const changeSymbol = stats.userGrowthChange >= 0 ? '+' : '';
-                growthElement.textContent = `${changeSymbol}${stats.userGrowthChange}%`;
-                growthElement.className = `card-change ${changeClass}`;
-            }
+            document.getElementById('totalUsers').textContent = totalUsers.toLocaleString();
+            document.getElementById('proUsers').textContent = proUsers.toLocaleString();
+            document.getElementById('weeklySubs').textContent = weeklySubs.toLocaleString();
+            document.getElementById('monthlySubs').textContent = monthlySubs.toLocaleString();
+            document.getElementById('yearlySubs').textContent = yearlySubs.toLocaleString();
+            document.getElementById('lifetimeSubs').textContent = lifetimeSubs.toLocaleString();
+            document.getElementById('monthlyRevenue').textContent = `$${monthlyRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            document.getElementById('newUsers7d').textContent = newUsers7d.toLocaleString();
 
             // Store for pagination
-            this.totalUsers = stats.totalUsers;
+            this.totalUsers = totalUsers;
 
         } catch (error) {
             console.error('Error loading summary stats:', error);
-            this.showError('Failed to load summary statistics');
         }
     }
 
-    async loadUsers() {
+    async loadUsers(page = 1, search = '', tier = '', plan = '', sortBy = 'newest') {
         try {
-            const params = new URLSearchParams({
-                page: this.currentPage.toString(),
-                pageSize: this.pageSize.toString(),
-                search: this.filters.search,
-                tier: this.filters.tier,
-                plan: this.filters.plan,
-                sortBy: this.filters.sortBy
-            });
+            let query = this.supabase
+                .from('profiles')
+                .select('*', { count: 'exact' });
 
-            const response = await fetch(`${this.backendUrl}/api/admin/users?${params}`, {
-                headers: {
-                    'Authorization': this.authToken,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            // Apply search filter
+            if (search) {
+                query = query.or(`username.ilike.%${search}%,email.ilike.%${search}%`);
             }
 
-            const result = await response.json();
+            // Apply tier filter
+            if (tier) {
+                query = query.eq('subscription_tier', tier);
+            }
 
-            this.renderUsers(result.users);
-            this.updatePagination(result.totalCount);
+            // Apply plan filter
+            if (plan) {
+                query = query.eq('subscription_plan_type', plan);
+            }
 
+            // Apply sorting
+            switch (sortBy) {
+                case 'newest':
+                    query = query.order('created_at', { ascending: false });
+                    break;
+                case 'oldest':
+                    query = query.order('created_at', { ascending: true });
+                    break;
+                case 'username_asc':
+                    query = query.order('username', { ascending: true });
+                    break;
+                case 'username_desc':
+                    query = query.order('username', { ascending: false });
+                    break;
+                default:
+                    query = query.order('created_at', { ascending: false });
+            }
+
+            // Apply pagination
+            const offset = (page - 1) * this.pageSize;
+            query = query.range(offset, offset + this.pageSize - 1);
+
+            const { data: users, error, count } = await query;
+
+            if (error) throw error;
+            
+            this.renderUsers(users || []);
+            this.updatePagination(count || 0);
+            
         } catch (error) {
             console.error('Error loading users:', error);
-            this.showError('Failed to load users');
         }
     }
 
@@ -264,22 +292,17 @@ class AdminDashboard {
 
     async viewUser(userId) {
         try {
-            const response = await fetch(`${this.backendUrl}/api/admin/users/${userId}`, {
-                headers: {
-                    'Authorization': this.authToken,
-                    'Content-Type': 'application/json'
-                }
-            });
+            const { data: user, error } = await this.supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', userId)
+                .single();
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const user = await response.json();
+            if (error) throw error;
+            
             this.showUserModal(user);
         } catch (error) {
             console.error('Error loading user details:', error);
-            this.showError('Failed to load user details');
         }
     }
 
@@ -353,18 +376,37 @@ class AdminDashboard {
 
     async loadUserGrowthChart() {
         try {
-            const response = await fetch(`${this.backendUrl}/api/admin/charts/user-growth`, {
-                headers: {
-                    'Authorization': this.authToken,
-                    'Content-Type': 'application/json'
+            // Get users from last 30 days
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            
+            const { data: users, error } = await this.supabase
+                .from('profiles')
+                .select('created_at')
+                .gte('created_at', thirtyDaysAgo.toISOString());
+
+            if (error) throw error;
+
+            // Process data for chart
+            const dailyCounts = {};
+            for (let i = 29; i >= 0; i--) {
+                const date = new Date();
+                date.setDate(date.getDate() - i);
+                const dateStr = date.toISOString().split('T')[0];
+                dailyCounts[dateStr] = 0;
+            }
+
+            users.forEach(user => {
+                const dateStr = user.created_at.split('T')[0];
+                if (dailyCounts.hasOwnProperty(dateStr)) {
+                    dailyCounts[dateStr]++;
                 }
             });
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const chartData = await response.json();
+            const chartData = {
+                labels: Object.keys(dailyCounts).map(date => new Date(date).toLocaleDateString()),
+                data: Object.values(dailyCounts)
+            };
 
             const ctx = document.getElementById('userGrowthChart').getContext('2d');
             this.charts.userGrowth = new Chart(ctx, {
@@ -405,18 +447,22 @@ class AdminDashboard {
 
     async loadSubscriptionChart() {
         try {
-            const response = await fetch(`${this.backendUrl}/api/admin/charts/subscription-distribution`, {
-                headers: {
-                    'Authorization': this.authToken,
-                    'Content-Type': 'application/json'
-                }
+            const { data: users, error } = await this.supabase
+                .from('profiles')
+                .select('subscription_tier');
+
+            if (error) throw error;
+
+            const tierCounts = { free: 0, pro: 0 };
+            users.forEach(user => {
+                const tier = user.subscription_tier || 'free';
+                tierCounts[tier] = (tierCounts[tier] || 0) + 1;
             });
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const chartData = await response.json();
+            const chartData = {
+                labels: ['Free Users', 'Pro Users'],
+                data: [tierCounts.free, tierCounts.pro]
+            };
 
             const ctx = document.getElementById('subscriptionChart').getContext('2d');
             this.charts.subscription = new Chart(ctx, {
