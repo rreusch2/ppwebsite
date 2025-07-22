@@ -98,11 +98,23 @@ class AdminDashboard {
         try {
             document.getElementById('refreshBtn').innerHTML = '<span class="spinner"></span> Loading...';
             
-            await Promise.all([
+            // Load data with individual error handling
+            const results = await Promise.allSettled([
                 this.loadSummaryStats(),
                 this.loadUsers(),
                 this.loadCharts()
             ]);
+
+            // Check if any critical operations failed
+            const failedOperations = results.filter(result => result.status === 'rejected');
+            
+            if (failedOperations.length === results.length) {
+                // All operations failed
+                this.showError('Failed to load dashboard data');
+            } else if (failedOperations.length > 0) {
+                // Some operations failed, but don't show error if stats loaded successfully
+                console.warn('Some dashboard operations failed:', failedOperations);
+            }
 
             this.updateLastUpdated();
         } catch (error) {
