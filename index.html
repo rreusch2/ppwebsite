@@ -83,8 +83,38 @@
             </div>
             <div class="copyright">
                 <p>&copy; 2025 Predictive Play. All rights reserved.</p>
+                <!-- Hidden Admin Access - Triple click the period to access -->
+                <span id="adminAccess" style="opacity: 0.1; font-size: 8px; cursor: pointer; user-select: none;">.</span>
             </div>
         </footer>
+        
+        <script>
+            // Hidden admin access functionality
+            let clickCount = 0;
+            let clickTimer = null;
+            
+            document.getElementById('adminAccess').addEventListener('click', function(e) {
+                e.preventDefault();
+                clickCount++;
+                
+                if (clickCount === 1) {
+                    clickTimer = setTimeout(() => {
+                        clickCount = 0;
+                    }, 2000); // Reset after 2 seconds
+                }
+                
+                if (clickCount === 3) {
+                    clearTimeout(clickTimer);
+                    clickCount = 0;
+                    
+                    // Show admin access prompt
+                    const access = confirm('Admin access detected. Continue to admin login?');
+                    if (access) {
+                        window.location.href = 'admin-login.html';
+                    }
+                }
+            });
+        </script>
     </div>
 </body>
 </html>

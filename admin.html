@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ParleyApp Admin Dashboard</title>
+    <link rel="stylesheet" href="admin-styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Header -->
+        <header class="admin-header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <img src="logo.png" alt="ParleyApp Logo" class="admin-logo">
+                    <h1>ParleyApp Admin Dashboard</h1>
+                </div>
+                <div class="header-actions">
+                    <span class="last-updated">Last updated: <span id="lastUpdated">--</span></span>
+                    <button id="refreshBtn" class="refresh-btn">🔄 Refresh</button>
+                    <button id="logoutBtn" class="logout-btn">Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Summary Cards -->
+        <section class="summary-section">
+            <div class="summary-cards">
+                <div class="summary-card total-users">
+                    <div class="card-icon">👥</div>
+                    <div class="card-content">
+                        <h3>Total Users</h3>
+                        <div class="card-number" id="totalUsers">--</div>
+                        <div class="card-change" id="totalUsersChange">--</div>
+                    </div>
+                </div>
+                
+                <div class="summary-card pro-users">
+                    <div class="card-icon">⭐</div>
+                    <div class="card-content">
+                        <h3>Pro Users</h3>
+                        <div class="card-number" id="proUsers">--</div>
+                        <div class="card-change" id="proUsersChange">--</div>
+                    </div>
+                </div>
+
+                <div class="summary-card weekly-subs">
+                    <div class="card-icon">📅</div>
+                    <div class="card-content">
+                        <h3>Weekly Pro</h3>
+                        <div class="card-number" id="weeklySubs">--</div>
+                        <div class="card-subtitle">$12.49/week</div>
+                    </div>
+                </div>
+
+                <div class="summary-card monthly-subs">
+                    <div class="card-icon">📆</div>
+                    <div class="card-content">
+                        <h3>Monthly Pro</h3>
+                        <div class="card-number" id="monthlySubs">--</div>
+                        <div class="card-subtitle">$24.99/month</div>
+                    </div>
+                </div>
+
+                <div class="summary-card yearly-subs">
+                    <div class="card-icon">🗓️</div>
+                    <div class="card-content">
+                        <h3>Yearly Pro</h3>
+                        <div class="card-number" id="yearlySubs">--</div>
+                        <div class="card-subtitle">$199.99/year</div>
+                    </div>
+                </div>
+
+                <div class="summary-card lifetime-subs">
+                    <div class="card-icon">♾️</div>
+                    <div class="card-content">
+                        <h3>Lifetime Pro</h3>
+                        <div class="card-number" id="lifetimeSubs">--</div>
+                        <div class="card-subtitle">$349.99 one-time</div>
+                    </div>
+                </div>
+
+                <div class="summary-card revenue">
+                    <div class="card-icon">💰</div>
+                    <div class="card-content">
+                        <h3>Est. Monthly Revenue</h3>
+                        <div class="card-number" id="monthlyRevenue">--</div>
+                        <div class="card-subtitle">Recurring revenue</div>
+                    </div>
+                </div>
+
+                <div class="summary-card growth">
+                    <div class="card-icon">📈</div>
+                    <div class="card-content">
+                        <h3>New Users (7d)</h3>
+                        <div class="card-number" id="newUsers7d">--</div>
+                        <div class="card-change" id="newUsersChange">--</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- User Management -->
+        <section class="user-management">
+            <div class="section-header">
+                <h2>User Management</h2>
+                <div class="user-controls">
+                    <input type="text" id="searchInput" placeholder="Search by username or email..." class="search-input">
+                    <select id="tierFilter" class="filter-select">
+                        <option value="">All Tiers</option>
+                        <option value="free">Free</option>
+                        <option value="pro">Pro</option>
+                    </select>
+                    <select id="planFilter" class="filter-select">
+                        <option value="">All Plans</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="yearly">Yearly</option>
+                        <option value="lifetime">Lifetime</option>
+                    </select>
+                    <select id="sortBy" class="filter-select">
+                        <option value="created_at_desc">Newest First</option>
+                        <option value="created_at_asc">Oldest First</option>
+                        <option value="username_asc">Username A-Z</option>
+                        <option value="username_desc">Username Z-A</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="user-table-container">
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Email</th>
+                            <th>Tier</th>
+                            <th>Plan Type</th>
+                            <th>Status</th>
+                            <th>Expires</th>
+                            <th>Joined</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userTableBody">
+                        <!-- Users will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination">
+                <button id="prevPage" class="pagination-btn">← Previous</button>
+                <span id="pageInfo">Page 1 of 1</span>
+                <button id="nextPage" class="pagination-btn">Next →</button>
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="charts-section">
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3>User Growth (Last 30 Days)</h3>
+                    <canvas id="userGrowthChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Subscription Distribution</h3>
+                    <canvas id="subscriptionChart"></canvas>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- User Detail Modal -->
+    <div id="userModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>User Details</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body" id="userModalBody">
+                <!-- User details will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="admin-dashboard.js"></script>
+</body>
+</html>
