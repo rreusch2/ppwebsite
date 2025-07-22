@@ -1,7 +1,8 @@
 // Admin Dashboard JavaScript
 class AdminDashboard {
     constructor() {
-        this.supabase = null;
+        this.backendUrl = null;
+        this.authToken = null;
         this.currentPage = 1;
         this.pageSize = 20;
         this.totalUsers = 0;
@@ -23,8 +24,8 @@ class AdminDashboard {
             return;
         }
 
-        // Initialize Supabase
-        this.initSupabase();
+        // Initialize backend connection
+        this.initBackend();
         
         // Setup event listeners
         this.setupEventListeners();
@@ -40,7 +41,7 @@ class AdminDashboard {
         return sessionStorage.getItem('adminAuthenticated') === 'true';
     }
 
-    initSupabase() {
+    initBackend() {
         // Use Railway backend API instead of direct Supabase
         this.backendUrl = 'https://zooming-rebirth-production-a305.up.railway.app';
         this.authToken = 'Bearer admin-pplay12345';
