@@ -41,10 +41,9 @@ class AdminDashboard {
     }
 
     initSupabase() {
-        const SUPABASE_URL = 'https://iriaegoipkjtktitpary.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlyaWFlZ29pcGtqdGt0aXRwYXJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzYzMjc4MjAsImV4cCI6MjA1MTkwMzgyMH0.VHhHvnhJOYEHBJqfBzfqHJMKJHGFDSAQWERTYUIKLMQ';
-        
-        this.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Use Railway backend API instead of direct Supabase
+        this.backendUrl = 'https://zooming-rebirth-production-a305.up.railway.app';
+        this.authToken = 'Bearer admin-pplay12345';
     }
 
     setupEventListeners() {
@@ -115,99 +114,73 @@ class AdminDashboard {
 
     async loadSummaryStats() {
         try {
-            // Get basic user counts
-            const { data: userStats, error: userError } = await this.supabase
-                .from('profiles')
-                .select('subscription_tier, subscription_plan_type, subscription_status, created_at')
-                .eq('is_active', true);
+            const response = await fetch(`${this.backendUrl}/api/admin/stats`, {
+                headers: {
+                    'Authorization': this.authToken,
+                    'Content-Type': 'application/json'
+                }
+            });
 
-            if (userError) throw userError;
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
 
-            // Calculate stats
-            const totalUsers = userStats.length;
-            const proUsers = userStats.filter(u => u.subscription_tier === 'pro').length;
-            const freeUsers = userStats.filter(u => u.subscription_tier === 'free').length;
-            
-            // Subscription plan counts
-            const weeklySubs = userStats.filter(u => u.subscription_plan_type === 'weekly' && u.subscription_status === 'active').length;
-            const monthlySubs = userStats.filter(u => u.subscription_plan_type === 'monthly' && u.subscription_status === 'active').length;
-            const yearlySubs = userStats.filter(u => u.subscription_plan_type === 'yearly' && u.subscription_status === 'active').length;
-            const lifetimeSubs = userStats.filter(u => u.subscription_plan_type === 'lifetime' && u.subscription_status === 'active').length;
-
-            // Calculate revenue
-            const monthlyRevenue = (weeklySubs * 12.49 * 4.33) + (monthlySubs * 24.99) + (yearlySubs * 199.99 / 12) + (lifetimeSubs * 349.99 / 60); // Lifetime spread over 5 years
-
-            // New users in last 7 days
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            const newUsers7d = userStats.filter(u => new Date(u.created_at) >= sevenDaysAgo).length;
+            const stats = await response.json();
 
             // Update UI
-            document.getElementById('totalUsers').textContent = totalUsers.toLocaleString();
-            document.getElementById('proUsers').textContent = proUsers.toLocaleString();
-            document.getElementById('weeklySubs').textContent = weeklySubs.toLocaleString();
-            document.getElementById('monthlySubs').textContent = monthlySubs.toLocaleString();
-            document.getElementById('yearlySubs').textContent = yearlySubs.toLocaleString();
-            document.getElementById('lifetimeSubs').textContent = lifetimeSubs.toLocaleString();
-            document.getElementById('monthlyRevenue').textContent = `$${monthlyRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            document.getElementById('newUsers7d').textContent = newUsers7d.toLocaleString();
+            document.getElementById('totalUsers').textContent = stats.totalUsers.toLocaleString();
+            document.getElementById('proUsers').textContent = stats.proUsers.toLocaleString();
+            document.getElementById('weeklySubs').textContent = stats.weeklySubs.toLocaleString();
+            document.getElementById('monthlySubs').textContent = stats.monthlySubs.toLocaleString();
+            document.getElementById('yearlySubs').textContent = stats.yearlySubs.toLocaleString();
+            document.getElementById('lifetimeSubs').textContent = stats.lifetimeSubs.toLocaleString();
+            document.getElementById('monthlyRevenue').textContent = `$${stats.monthlyRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            document.getElementById('newUsers7d').textContent = stats.newUsers7d.toLocaleString();
+
+            // Show growth change if available
+            const growthElement = document.getElementById('newUsersChange');
+            if (stats.userGrowthChange !== undefined) {
+                const changeClass = stats.userGrowthChange >= 0 ? 'positive' : 'negative';
+                const changeSymbol = stats.userGrowthChange >= 0 ? '+' : '';
+                growthElement.textContent = `${changeSymbol}${stats.userGrowthChange}%`;
+                growthElement.className = `card-change ${changeClass}`;
+            }
 
             // Store for pagination
-            this.totalUsers = totalUsers;
+            this.totalUsers = stats.totalUsers;
 
         } catch (error) {
             console.error('Error loading summary stats:', error);
+            this.showError('Failed to load summary statistics');
         }
     }
 
     async loadUsers() {
         try {
-            let query = this.supabase
-                .from('profiles')
-                .select(`
-                    id,
-                    username,
-                    email,
-                    avatar_url,
-                    subscription_tier,
-                    subscription_plan_type,
-                    subscription_status,
-                    subscription_expires_at,
-                    created_at,
-                    is_active,
-                    welcome_bonus_claimed,
-                    revenuecat_customer_id
-                `)
-                .eq('is_active', true);
+            const params = new URLSearchParams({
+                page: this.currentPage.toString(),
+                pageSize: this.pageSize.toString(),
+                search: this.filters.search,
+                tier: this.filters.tier,
+                plan: this.filters.plan,
+                sortBy: this.filters.sortBy
+            });
 
-            // Apply filters
-            if (this.filters.search) {
-                query = query.or(`username.ilike.%${this.filters.search}%,email.ilike.%${this.filters.search}%`);
+            const response = await fetch(`${this.backendUrl}/api/admin/users?${params}`, {
+                headers: {
+                    'Authorization': this.authToken,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
 
-            if (this.filters.tier) {
-                query = query.eq('subscription_tier', this.filters.tier);
-            }
+            const result = await response.json();
 
-            if (this.filters.plan) {
-                query = query.eq('subscription_plan_type', this.filters.plan);
-            }
-
-            // Apply sorting
-            const [sortField, sortDirection] = this.filters.sortBy.split('_');
-            query = query.order(sortField, { ascending: sortDirection === 'asc' });
-
-            // Apply pagination
-            const from = (this.currentPage - 1) * this.pageSize;
-            const to = from + this.pageSize - 1;
-            query = query.range(from, to);
-
-            const { data: users, error, count } = await query;
-
-            if (error) throw error;
-
-            this.renderUsers(users);
-            this.updatePagination(count || 0);
+            this.renderUsers(result.users);
+            this.updatePagination(result.totalCount);
 
         } catch (error) {
             console.error('Error loading users:', error);
@@ -278,14 +251,18 @@ class AdminDashboard {
 
     async viewUser(userId) {
         try {
-            const { data: user, error } = await this.supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', userId)
-                .single();
+            const response = await fetch(`${this.backendUrl}/api/admin/users/${userId}`, {
+                headers: {
+                    'Authorization': this.authToken,
+                    'Content-Type': 'application/json'
+                }
+            });
 
-            if (error) throw error;
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
 
+            const user = await response.json();
             this.showUserModal(user);
         } catch (error) {
             console.error('Error loading user details:', error);
@@ -362,118 +339,102 @@ class AdminDashboard {
     }
 
     async loadUserGrowthChart() {
-        const { data: users, error } = await this.supabase
-            .from('profiles')
-            .select('created_at')
-            .eq('is_active', true)
-            .order('created_at', { ascending: true });
-
-        if (error) throw error;
-
-        // Group by day for last 30 days
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-        const dailyCounts = {};
-        const labels = [];
-        const data = [];
-
-        // Initialize all days with 0
-        for (let i = 29; i >= 0; i--) {
-            const date = new Date();
-            date.setDate(date.getDate() - i);
-            const dateStr = date.toISOString().split('T')[0];
-            dailyCounts[dateStr] = 0;
-            labels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-        }
-
-        // Count users by day
-        users.forEach(user => {
-            const userDate = new Date(user.created_at);
-            if (userDate >= thirtyDaysAgo) {
-                const dateStr = userDate.toISOString().split('T')[0];
-                if (dailyCounts[dateStr] !== undefined) {
-                    dailyCounts[dateStr]++;
+        try {
+            const response = await fetch(`${this.backendUrl}/api/admin/charts/user-growth`, {
+                headers: {
+                    'Authorization': this.authToken,
+                    'Content-Type': 'application/json'
                 }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-        });
 
-        Object.values(dailyCounts).forEach(count => data.push(count));
+            const chartData = await response.json();
 
-        const ctx = document.getElementById('userGrowthChart').getContext('2d');
-        this.charts.userGrowth = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'New Users',
-                    data: data,
-                    borderColor: '#667eea',
-                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                    borderWidth: 3,
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
+            const ctx = document.getElementById('userGrowthChart').getContext('2d');
+            this.charts.userGrowth = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        label: 'New Users',
+                        data: chartData.data,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4
+                    }]
                 },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
                         }
                     }
                 }
-            }
-        });
+            });
+        } catch (error) {
+            console.error('Error loading user growth chart:', error);
+        }
     }
 
     async loadSubscriptionChart() {
-        const { data: users, error } = await this.supabase
-            .from('profiles')
-            .select('subscription_tier, subscription_plan_type')
-            .eq('is_active', true);
+        try {
+            const response = await fetch(`${this.backendUrl}/api/admin/charts/subscription-distribution`, {
+                headers: {
+                    'Authorization': this.authToken,
+                    'Content-Type': 'application/json'
+                }
+            });
 
-        if (error) throw error;
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
 
-        const tierCounts = {
-            'Free': users.filter(u => u.subscription_tier === 'free').length,
-            'Pro': users.filter(u => u.subscription_tier === 'pro').length
-        };
+            const chartData = await response.json();
 
-        const ctx = document.getElementById('subscriptionChart').getContext('2d');
-        this.charts.subscription = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: Object.keys(tierCounts),
-                datasets: [{
-                    data: Object.values(tierCounts),
-                    backgroundColor: [
-                        '#e3f2fd',
-                        '#fff3e0'
-                    ],
-                    borderColor: [
-                        '#1976d2',
-                        '#f57c00'
-                    ],
-                    borderWidth: 2
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom'
+            const ctx = document.getElementById('subscriptionChart').getContext('2d');
+            this.charts.subscription = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        data: chartData.data,
+                        backgroundColor: [
+                            '#e3f2fd',
+                            '#fff3e0'
+                        ],
+                        borderColor: [
+                            '#1976d2',
+                            '#f57c00'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
                     }
                 }
-            }
-        });
+            });
+        } catch (error) {
+            console.error('Error loading subscription chart:', error);
+        }
     }
 
     previousPage() {
