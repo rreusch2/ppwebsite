@@ -86,6 +86,14 @@ class AdminDashboard {
                 this.closeModal();
             }
         });
+
+        // AI Agent Chat
+        document.getElementById('sendChatBtn').addEventListener('click', () => this.sendChatMessage());
+        document.getElementById('chatInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.sendChatMessage();
+            }
+        });
     }
 
     debounceSearch() {
@@ -540,10 +548,60 @@ class AdminDashboard {
         sessionStorage.removeItem('adminAuthenticated');
         window.location.href = 'admin-login.html';
     }
+
+    async sendChatMessage() {
+        const chatInput = document.getElementById('chatInput');
+        const message = chatInput.value.trim();
+
+        if (message) {
+            this.addMessageToChatbox('user', message);
+            chatInput.value = '';
+
+            try {
+                const response = await fetch('http://127.0.0.1:8001/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_input: message,
+                        chat_history: this.chatHistory,
+                    }),
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    this.addMessageToChatbox('agent', data.response);
+                    this.chatHistory.push({ "role": "user", "content": message });
+                    this.chatHistory.push({ "role": "assistant", "content": data.response });
+                } else {
+                    this.addMessageToChatbox('agent', 'Error: Could not get a response from the agent.');
+                }
+            } catch (error) {
+                console.error('Error sending chat message:', error);
+                this.addMessageToChatbox('agent', 'Error: Could not connect to the agent.');
+            }
+        }
+    }
+
+    addMessageToChatbox(sender, message) {
+        const chatBox = document.getElementById('chatBox');
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('chat-message', sender);
+
+        const bubble = document.createElement('div');
+        bubble.classList.add('message-bubble');
+        bubble.textContent = message;
+
+        messageElement.appendChild(bubble);
+        chatBox.appendChild(messageElement);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
 }
 
 // Initialize dashboard when page loads
 let adminDashboard;
 document.addEventListener('DOMContentLoaded', () => {
     adminDashboard = new AdminDashboard();
+    adminDashboard.chatHistory = [];
 });
